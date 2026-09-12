@@ -5,8 +5,7 @@ import spaces
 import gradio as gr
 from api import router
 from core import inspect_plan, compare_budget
-from fastapi import FastAPI
-import uvicorn
+from threading import Event
 
 @spaces.GPU(duration=1)
 def hosting_probe() -> str:
@@ -38,10 +37,13 @@ with gr.Blocks(title='Grid Witness') as demo:
     with gr.Accordion('Hosting diagnostics', open=False):
         gr.Button('Optional scheduler probe').click(hosting_probe, outputs=gr.Textbox(), api_name=False)
 
-server = FastAPI(title='Grid Witness API', version='1.0.0')
-server.include_router(router)
-server = gr.mount_gradio_app(server, demo, path='/', ssr_mode=False,
-                             mcp_server=True, run_history=False)
-
 if __name__ == '__main__':
-    uvicorn.run(server, host='0.0.0.0', port=int(os.environ.get('PORT',7860)))
+    demo.launch(server_name='0.0.0.0', server_port=int(os.environ.get('PORT',7860)),
+                prevent_thread_lock=True, mcp_server=True, ssr_mode=False,
+                run_history=False)
+    # Add public JSON routes before Gradio's catch-all page route.
+    existing = list(demo.app.router.routes)
+    demo.app.include_router(router)
+    added = demo.app.router.routes[len(existing):]
+    demo.app.router.routes[:] = added + existing
+    Event().wait()
